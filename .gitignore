@@ -131,3 +131,4 @@ dmypy.json
 *.zip
 *.tar.gz
 tutorial-data
+data/

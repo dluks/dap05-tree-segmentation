@@ -8,7 +8,7 @@ Written by Waleed Abdulla
 Modified by Daniel Lusk
 
 ------------------------------------------------------------
-
+TODO: Change this section
 Usage: import the module (see Jupyter notebooks for examples), or run from
        the command line as such:
 
@@ -26,7 +26,7 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
 """
 # %%
 # Set matplotlib backend
-# This has to be done before other importa that might
+# This has to be done before other imports that might
 # set it, but only if we're running in script mode
 # rather than being imported.
 if __name__ == "__main__":
@@ -38,7 +38,6 @@ if __name__ == "__main__":
 
 import os
 import sys
-import json
 import datetime
 import numpy as np
 import skimage.io
@@ -46,10 +45,11 @@ from imgaug import augmenters as iaa
 
 # %%
 # Root directory of the project
-ROOT_DIR = os.path.abspath("../Mask_RCNN/")
+MRCNN_DIR = os.path.abspath("../Mask_RCNN/")
+ROOT_DIR = os.path.abspath("./")
 
 # Import Mask RCNN
-sys.path.append(ROOT_DIR)  # To find local version of the library
+sys.path.append(MRCNN_DIR)  # To find local version of the library
 from mrcnn.config import Config
 from mrcnn import utils
 from mrcnn import model as modellib
@@ -57,7 +57,7 @@ from mrcnn import visualize
 
 # %%
 # Path to trained weights file
-COCO_WEIGHTS_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.h5")
+COCO_WEIGHTS_PATH = os.path.join(MRCNN_DIR, "mask_rcnn_coco.h5")
 
 # Directory to save logs and model checkpoints, if not provided
 # through the command line argument --logs
@@ -65,109 +65,134 @@ DEFAULT_LOGS_DIR = os.path.join(ROOT_DIR, "logs")
 
 # Results directory
 # Save submission files here
-RESULTS_DIR = os.path.join(ROOT_DIR, "results/nucleus/")
-
-# The dataset doesn't have a standard train/val split, so I picked
-# a variety of images to surve as a validation set.
-VAL_IMAGE_IDS = [
-    "0c2550a23b8a0f29a7575de8c61690d3c31bc897dd5ba66caec201d201a278c2",
-    "92f31f591929a30e4309ab75185c96ff4314ce0a7ead2ed2c2171897ad1da0c7",
-    "1e488c42eb1a54a3e8412b1f12cde530f950f238d71078f2ede6a85a02168e1f",
-    "c901794d1a421d52e5734500c0a2a8ca84651fb93b19cec2f411855e70cae339",
-    "8e507d58f4c27cd2a82bee79fe27b069befd62a46fdaed20970a95a2ba819c7b",
-    "60cb718759bff13f81c4055a7679e81326f78b6a193a2d856546097c949b20ff",
-    "da5f98f2b8a64eee735a398de48ed42cd31bf17a6063db46a9e0783ac13cd844",
-    "9ebcfaf2322932d464f15b5662cae4d669b2d785b8299556d73fffcae8365d32",
-    "1b44d22643830cd4f23c9deadb0bd499fb392fb2cd9526d81547d93077d983df",
-    "97126a9791f0c1176e4563ad679a301dac27c59011f579e808bbd6e9f4cd1034",
-    "e81c758e1ca177b0942ecad62cf8d321ffc315376135bcbed3df932a6e5b40c0",
-    "f29fd9c52e04403cd2c7d43b6fe2479292e53b2f61969d25256d2d2aca7c6a81",
-    "0ea221716cf13710214dcd331a61cea48308c3940df1d28cfc7fd817c83714e1",
-    "3ab9cab6212fabd723a2c5a1949c2ded19980398b56e6080978e796f45cbbc90",
-    "ebc18868864ad075548cc1784f4f9a237bb98335f9645ee727dac8332a3e3716",
-    "bb61fc17daf8bdd4e16fdcf50137a8d7762bec486ede9249d92e511fcb693676",
-    "e1bcb583985325d0ef5f3ef52957d0371c96d4af767b13e48102bca9d5351a9b",
-    "947c0d94c8213ac7aaa41c4efc95d854246550298259cf1bb489654d0e969050",
-    "cbca32daaae36a872a11da4eaff65d1068ff3f154eedc9d3fc0c214a4e5d32bd",
-    "f4c4db3df4ff0de90f44b027fc2e28c16bf7e5c75ea75b0a9762bbb7ac86e7a3",
-    "4193474b2f1c72f735b13633b219d9cabdd43c21d9c2bb4dfc4809f104ba4c06",
-    "f73e37957c74f554be132986f38b6f1d75339f636dfe2b681a0cf3f88d2733af",
-    "a4c44fc5f5bf213e2be6091ccaed49d8bf039d78f6fbd9c4d7b7428cfcb2eda4",
-    "cab4875269f44a701c5e58190a1d2f6fcb577ea79d842522dcab20ccb39b7ad2",
-    "8ecdb93582b2d5270457b36651b62776256ade3aaa2d7432ae65c14f07432d49",
-]
-
+RESULTS_DIR = os.path.join(ROOT_DIR, "results/tree/")
 
 ############################################################
 #  Configurations
 ############################################################
 
 
-class NucleusConfig(Config):
-    """Configuration for training on the nucleus segmentation dataset."""
+class TreeConfig(Config):
+    """Configuration for training on the tree segmentation dataset."""
 
-    # Give the configuration a recognizable name
-    NAME = "nucleus"
+    NAME = "tree"
 
-    # Adjust depending on your GPU memory
-    IMAGES_PER_GPU = 6
+    # Number of images to train with on each GPU. A 12GB GPU can typically
+    # handle 2 images of 1024x1024px.
+    # Adjust based on your GPU memory and image sizes. Use the highest
+    # number that your GPU can handle for best performance.
+    IMAGES_PER_GPU = 8
 
-    # Number of classes (including background)
-    NUM_CLASSES = 1 + 1  # Background + nucleus
-
-    # Number of training and validation steps per epoch
-    STEPS_PER_EPOCH = (657 - len(VAL_IMAGE_IDS)) // IMAGES_PER_GPU
-    VALIDATION_STEPS = max(1, len(VAL_IMAGE_IDS) // IMAGES_PER_GPU)
-
-    # Don't exclude based on confidence. Since we have two classes
-    # then 0.5 is the minimum anyway as it picks between nucleus and BG
-    DETECTION_MIN_CONFIDENCE = 0
-
-    # Backbone network architecture
-    # Supported values are: resnet50, resnet101
-    BACKBONE = "resnet50"
-
-    # Input image resizing
-    # Random crops of size 512x512
-    IMAGE_RESIZE_MODE = "crop"
-    IMAGE_MIN_DIM = 512
-    IMAGE_MAX_DIM = 512
-    IMAGE_MIN_SCALE = 2.0
+    # Number of classification classes (including background)
+    NUM_CLASSES = 1 + 1  # Background + tree
 
     # Length of square anchor side in pixels
     RPN_ANCHOR_SCALES = (8, 16, 32, 64, 128)
 
-    # ROIs kept after non-maximum supression (training and inference)
-    POST_NMS_ROIS_TRAINING = 1000
-    POST_NMS_ROIS_INFERENCE = 2000
-
     # Non-max suppression threshold to filter RPN proposals.
-    # You can increase this during training to generate more propsals.
+    # You can increase this during training to generate more proposals.
     RPN_NMS_THRESHOLD = 0.9
 
     # How many anchors per image to use for RPN training
-    RPN_TRAIN_ANCHORS_PER_IMAGE = 64
+    RPN_TRAIN_ANCHORS_PER_IMAGE = 128
+
+    # Input image resizing
+    # Generally, use the "square" resizing mode for training and predicting
+    # and it should work well in most cases. In this mode, images are scaled
+    # up such that the small side is = IMAGE_MIN_DIM, but ensuring that the
+    # scaling doesn't make the long side > IMAGE_MAX_DIM. Then the image is
+    # padded with zeros to make it a square so multiple images can be put
+    # in one batch.
+    # Available resizing modes:
+    # none:   No resizing or padding. Return the image unchanged.
+    # square: Resize and pad with zeros to get a square image
+    #         of size [max_dim, max_dim].
+    # pad64:  Pads width and height with zeros to make them multiples of 64.
+    #         If IMAGE_MIN_DIM or IMAGE_MIN_SCALE are not None, then it scales
+    #         up before padding. IMAGE_MAX_DIM is ignored in this mode.
+    #         The multiple of 64 is needed to ensure smooth scaling of feature
+    #         maps up and down the 6 levels of the FPN pyramid (2**6=64).
+    # crop:   Picks random crops from the image. First, scales the image based
+    #         on IMAGE_MIN_DIM and IMAGE_MIN_SCALE, then picks a random crop of
+    #         size IMAGE_MIN_DIM x IMAGE_MIN_DIM. Can be used in training only.
+    #         IMAGE_MAX_DIM is not used in this mode.
+    IMAGE_RESIZE_MODE = "none"
+    IMAGE_MIN_DIM = 512
+    IMAGE_MAX_DIM = 512
 
     # Image mean (RGB)
-    MEAN_PIXEL = np.array([43.53, 39.56, 48.22])
-
-    # If enabled, resizes instance masks to a smaller size to reduce
-    # memory load. Recommended when using high-resolution images.
-    USE_MINI_MASK = True
-    MINI_MASK_SHAPE = (56, 56)  # (height, width) of the mini-mask
+    MEAN_PIXEL = np.array([107.0, 105.2, 101.5])
 
     # Number of ROIs per image to feed to classifier/mask heads
     # The Mask RCNN paper uses 512 but often the RPN doesn't generate
     # enough positive proposals to fill this and keep a positive:negative
     # ratio of 1:3. You can increase the number of proposals by adjusting
     # the RPN NMS threshold.
-    TRAIN_ROIS_PER_IMAGE = 128
+    TRAIN_ROIS_PER_IMAGE = 200
+
+    # Percent of positive ROIs used to train classifier/mask heads
+    ROI_POSITIVE_RATIO = 0.33
+
+    # Pooled ROIs
+    POOL_SIZE = 7
+    MASK_POOL_SIZE = 14
+
+    # Shape of output mask
+    # To change this you also need to change the neural network mask branch
+    MASK_SHAPE = [28, 28]
 
     # Maximum number of ground truth instances to use in one image
-    MAX_GT_INSTANCES = 200
+    MAX_GT_INSTANCES = 100
 
-    # Max number of final detections per image
-    DETECTION_MAX_INSTANCES = 400
+    # Bounding box refinement standard deviation for RPN and final detections.
+    RPN_BBOX_STD_DEV = np.array([0.1, 0.1, 0.2, 0.2])
+    BBOX_STD_DEV = np.array([0.1, 0.1, 0.2, 0.2])
+
+    # Max number of final detections
+    DETECTION_MAX_INSTANCES = 100
+
+    # Minimum probability value to accept a detected instance
+    # ROIs below this threshold are skipped
+    DETECTION_MIN_CONFIDENCE = 0.7
+
+    # Non-maximum suppression threshold for detection
+    DETECTION_NMS_THRESHOLD = 0.3
+
+    # Learning rate and momentum
+    # The Mask RCNN paper uses lr=0.02, but on TensorFlow it causes
+    # weights to explode. Likely due to differences in optimizer
+    # implementation.
+    LEARNING_RATE = 0.001
+    LEARNING_MOMENTUM = 0.9
+
+    # Weight decay regularization
+    WEIGHT_DECAY = 0.0001
+
+    # Loss weights for more precise optimization.
+    # Can be used for R-CNN training setup.
+    LOSS_WEIGHTS = {
+        "rpn_class_loss": 1.0,
+        "rpn_bbox_loss": 1.0,
+        "mrcnn_class_loss": 1.0,
+        "mrcnn_bbox_loss": 1.0,
+        "mrcnn_mask_loss": 1.0,
+    }
+
+    # Use RPN ROIs or externally generated ROIs for training
+    # Keep this True for most situations. Set to False if you want to train
+    # the head branches on ROI generated by code rather than the ROIs from
+    # the RPN. For example, to debug the classifier head without having to
+    # train the RPN.
+    USE_RPN_ROIS = True
+
+    # Train or freeze batch normalization layers
+    #     None: Train BN layers. This is the normal mode
+    #     False: Freeze BN layers. Good when using a small batch size
+    #     True: (don't use). Set layer in training mode even when predicting
+    TRAIN_BN = False  # Defaulting to False since batch size is often small
+
+    # Gradient norm clipping
+    GRADIENT_CLIP_NORM = 5.0
 
 
 class NucleusInferenceConfig(NucleusConfig):

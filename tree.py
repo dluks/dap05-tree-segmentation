@@ -4,8 +4,7 @@ Train on Berlin Trees dataset from the University of
 Potsdam
 
 Licensed under the MIT License (see LICENSE for details)
-Written by Waleed Abdulla
-Modified by Daniel Lusk
+Written by Daniel Lusk
 
 ------------------------------------------------------------
 TODO: Change this section
@@ -38,9 +37,12 @@ if __name__ == "__main__":
 
 import os
 import sys
+import glob
 import datetime
 import numpy as np
 import skimage.io
+from sklearn.model_selection import train_test_split
+import tifffile as tiff
 from imgaug import augmenters as iaa
 
 # %%
@@ -133,46 +135,49 @@ class TreeConfig(Config):
 ############################################################
 
 
-class NucleusDataset(utils.Dataset):
-    def load_nucleus(self, dataset_dir, subset):
-        """Load a subset of the nuclei dataset.
+class TreeDataset(utils.Dataset):
+    def load_tree(self, data_dir, split=0.1, val=False, seed=False):
+        """Load a subset of the tree dataset.
 
-        dataset_dir: Root directory of the dataset
-        subset: Subset to load. Either the name of the sub-directory,
-                such as stage1_train, stage1_test, ...etc. or, one of:
-                * train: stage1_train excluding validation images
-                * val: validation images from VAL_IMAGE_IDS
+        rgb_dir: Root directory of the rgb images
+        label_dir: Root directory of the label masks
+        split: The ratio for the training/validation split
+        val: Set to True to load the validation set instead of the
+        training set
+        seed: provide a random seed to generate the same train/val
+        split.
         """
         # Add classes. We have one class.
         # Naming the dataset nucleus, and the class nucleus
-        self.add_class("nucleus", 1, "nucleus")
+        self.add_class("tree", 1, "tree")
 
-        # Which subset?
-        # "val": use hard-coded list above
-        # "train": use data from stage1_train minus the hard-coded list above
-        # else: use the data from the specified sub-directory
-        assert subset in ["train", "val", "stage1_train", "stage1_test", "stage2_test"]
-        subset_dir = "stage1_train" if subset in ["train", "val"] else subset
-        dataset_dir = os.path.join(dataset_dir, subset_dir)
-        if subset == "val":
-            image_ids = VAL_IMAGE_IDS
+        image_ids = os.listdir(data_dir)
+
+        if not seed:
+            rng = np.random.default_rng()
+            seed = rng.integers(1, 999, 1)[0]
+
+        # TODO: This feels a bit overkill--probably better to just split manually
+        # with numpy.
+        x_train, x_test, y_train, y_test = train_test_split(
+            image_ids, image_ids, test_size=split, random_state=seed
+        )
+
+        if val:
+            image_ids = x_test
         else:
-            # Get image ids from directory names
-            image_ids = next(os.walk(dataset_dir))[1]
-            if subset == "train":
-                image_ids = list(set(image_ids) - set(VAL_IMAGE_IDS))
+            image_ids = x_train
 
         # Add images
         for image_id in image_ids:
             self.add_image(
-                "nucleus",
+                "tree",
                 image_id=image_id,
-                path=os.path.join(
-                    dataset_dir, image_id, "images/{}.png".format(image_id)
-                ),
+                path=os.path.join(data_dir, image_id, f"image/{image_id}.tif"),
             )
 
     def load_mask(self, image_id):
+        # TODO: update this
         """Generate instance masks for an image.
         Returns:
          masks: A bool array of shape [height, width, instance count] with
@@ -181,23 +186,29 @@ class NucleusDataset(utils.Dataset):
         """
         info = self.image_info[image_id]
         # Get mask directory from image path
-        mask_dir = os.path.join(os.path.dirname(os.path.dirname(info["path"])), "masks")
+        mask_dir = os.path.join(os.path.dirname(os.path.dirname(info["path"])), "mask")
 
-        # Read mask files from .png image
-        mask = []
-        for f in next(os.walk(mask_dir))[2]:
-            if f.endswith(".png"):
-                m = skimage.io.imread(os.path.join(mask_dir, f)).astype(np.bool)
-                mask.append(m)
-        mask = np.stack(mask, axis=-1)
+        # Read mask file from .tif image and separate classes into
+        # individual boolean mask layers
+        mask = tiff.imread(glob.glob(f"{mask_dir}/*.tif")[0]).astype("int")
+        classes = np.unique(mask)
+        masks = []
+        for i, cl in enumerate(classes):
+            if cl != 0:
+                m = np.zeros((mask.shape[0], mask.shape[1]))
+                m[np.where(mask == cl)] = 1
+                masks.append(m)
+
+        masks = np.moveaxis(np.array(masks), 0, -1)
+        
         # Return mask, and array of class IDs of each instance. Since we have
         # one class ID, we return an array of ones
-        return mask, np.ones([mask.shape[-1]], dtype=np.int32)
+        return masks, np.ones([masks.shape[-1]], dtype=np.int32)
 
     def image_reference(self, image_id):
         """Return the path of the image."""
         info = self.image_info[image_id]
-        if info["source"] == "nucleus":
+        if info["source"] == "tree":
             return info["id"]
         else:
             super(self.__class__, self).image_reference(image_id)

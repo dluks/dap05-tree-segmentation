@@ -12,18 +12,17 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
        the command line as such:
 
     # Train a new model starting from ImageNet weights
-    python3 nucleus.py train --dataset=/path/to/dataset --subset=train --weights=imagenet
+    python3 tree.py train --dataset=/path/to/dataset --subset=train --weights=imagenet
 
     # Train a new model starting from specific weights file
-    python3 nucleus.py train --dataset=/path/to/dataset --subset=train --weights=/path/to/weights.h5
+    python3 tree.py train --dataset=/path/to/dataset --subset=train --weights=/path/to/weights.h5
 
     # Resume training a model that you had trained earlier
-    python3 nucleus.py train --dataset=/path/to/dataset --subset=train --weights=last
+    python3 tree.py train --dataset=/path/to/dataset --subset=train --weights=last
 
     # Generate submission file
-    python3 nucleus.py detect --dataset=/path/to/dataset --subset=train --weights=<last or /path/to/weights.h5>
+    python3 tree.py detect --dataset=/path/to/dataset --subset=train --weights=<last or /path/to/weights.h5>
 """
-# %%
 # Set matplotlib backend
 # This has to be done before other imports that might
 # set it, but only if we're running in script mode
@@ -40,12 +39,10 @@ import sys
 import glob
 import datetime
 import numpy as np
-import skimage.io
 from sklearn.model_selection import train_test_split
 import tifffile as tiff
 from imgaug import augmenters as iaa
 
-# %%
 # Root directory of the project
 MRCNN_DIR = os.path.abspath("../Mask_RCNN/")
 ROOT_DIR = os.path.abspath("./")
@@ -57,7 +54,6 @@ from mrcnn import utils
 from mrcnn import model as modellib
 from mrcnn import visualize
 
-# %%
 # Path to trained weights file
 COCO_WEIGHTS_PATH = os.path.join(MRCNN_DIR, "mask_rcnn_coco.h5")
 
@@ -118,7 +114,7 @@ class TreeConfig(Config):
     #         on IMAGE_MIN_DIM and IMAGE_MIN_SCALE, then picks a random crop of
     #         size IMAGE_MIN_DIM x IMAGE_MIN_DIM. Can be used in training only.
     #         IMAGE_MAX_DIM is not used in this mode.
-    IMAGE_RESIZE_MODE = "none"
+    IMAGE_RESIZE_MODE = "crop"
     IMAGE_MIN_DIM = 512
     IMAGE_MAX_DIM = 512
 
@@ -126,8 +122,13 @@ class TreeConfig(Config):
     MEAN_PIXEL = np.array([107.0, 105.2, 101.5])
 
     # Don't exclude based on confidence. Since we have two classes
-    # then 0.5 is the minimum anyway as it picks between nucleus and BG
+    # then 0.5 is the minimum anyway as it picks between tree and BG
     DETECTION_MIN_CONFIDENCE = 0
+
+    # If enabled, resizes instance masks to a smaller size to reduce
+    # memory load. Recommended when using high-resolution images.
+    USE_MINI_MASK = False
+    MINI_MASK_SHAPE = (56, 56)  # (height, width) of the mini-mask
 
 
 ############################################################
@@ -139,8 +140,7 @@ class TreeDataset(utils.Dataset):
     def load_tree(self, data_dir, split=0.1, val=False, seed=False):
         """Load a subset of the tree dataset.
 
-        rgb_dir: Root directory of the rgb images
-        label_dir: Root directory of the label masks
+        data_dir: Root directory of the dataset
         split: The ratio for the training/validation split
         val: Set to True to load the validation set instead of the
         training set
@@ -148,7 +148,7 @@ class TreeDataset(utils.Dataset):
         split.
         """
         # Add classes. We have one class.
-        # Naming the dataset nucleus, and the class nucleus
+        # Naming the dataset tree, and the class tree
         self.add_class("tree", 1, "tree")
 
         image_ids = os.listdir(data_dir)
@@ -159,7 +159,7 @@ class TreeDataset(utils.Dataset):
 
         # TODO: This feels a bit overkill--probably better to just split manually
         # with numpy.
-        x_train, x_test, y_train, y_test = train_test_split(
+        x_train, x_test, _, _ = train_test_split(
             image_ids, image_ids, test_size=split, random_state=seed
         )
 
@@ -177,7 +177,6 @@ class TreeDataset(utils.Dataset):
             )
 
     def load_mask(self, image_id):
-        # TODO: update this
         """Generate instance masks for an image.
         Returns:
          masks: A bool array of shape [height, width, instance count] with
@@ -193,14 +192,14 @@ class TreeDataset(utils.Dataset):
         mask = tiff.imread(glob.glob(f"{mask_dir}/*.tif")[0]).astype("int")
         classes = np.unique(mask)
         masks = []
-        for i, cl in enumerate(classes):
-            if cl != 0:
+        for cl in classes:
+            if cl > 0:
                 m = np.zeros((mask.shape[0], mask.shape[1]))
                 m[np.where(mask == cl)] = 1
                 masks.append(m)
 
         masks = np.moveaxis(np.array(masks), 0, -1)
-        
+
         # Return mask, and array of class IDs of each instance. Since we have
         # one class ID, we return an array of ones
         return masks, np.ones([masks.shape[-1]], dtype=np.int32)
@@ -222,13 +221,13 @@ class TreeDataset(utils.Dataset):
 def train(model, dataset_dir, subset):
     """Train the model."""
     # Training dataset.
-    dataset_train = NucleusDataset()
-    dataset_train.load_nucleus(dataset_dir, subset)
+    dataset_train = TreeDataset()
+    dataset_train.load_tree(dataset_dir, subset)
     dataset_train.prepare()
 
     # Validation dataset
-    dataset_val = NucleusDataset()
-    dataset_val.load_nucleus(dataset_dir, "val")
+    dataset_val = TreeDataset()
+    dataset_val.load_tree(dataset_dir, "val")
     dataset_val.prepare()
 
     # Image augmentation
@@ -349,8 +348,8 @@ def detect(model, dataset_dir, subset):
     os.makedirs(submit_dir)
 
     # Read dataset
-    dataset = NucleusDataset()
-    dataset.load_nucleus(dataset_dir, subset)
+    dataset = TreeDataset()
+    dataset.load_tree(dataset_dir, subset)
     dataset.prepare()
     # Load over images
     submission = []
@@ -438,9 +437,9 @@ if __name__ == "__main__":
 
     # Configurations
     if args.command == "train":
-        config = NucleusConfig()
+        config = TreeConfig()
     else:
-        config = NucleusInferenceConfig()
+        config = TreeInferenceConfig()
     config.display()
 
     # Create model

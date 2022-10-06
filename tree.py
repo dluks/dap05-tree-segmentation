@@ -12,16 +12,19 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
        the command line as such:
 
     # Train a new model starting from ImageNet weights
-    python3 tree.py train --dataset=/path/to/dataset --subset=train --weights=imagenet
+    python3 tree.py train --dataset=/path/to/dataset --weights=imagenet
 
     # Train a new model starting from specific weights file
-    python3 tree.py train --dataset=/path/to/dataset --subset=train --weights=/path/to/weights.h5
+    python3 tree.py train --dataset=/path/to/dataset --weights=/path/to/weights.h5
+    
+    # Train a new model with a custom train/test split and randomization seed
+    python3 tree.py train --dataset=/path/to/dataset --split=0.2 --seed=420 --weights=/path/to/weights.h5
 
     # Resume training a model that you had trained earlier
-    python3 tree.py train --dataset=/path/to/dataset --subset=train --weights=last
+    python3 tree.py train --dataset=/path/to/dataset --weights=last
 
     # Generate submission file
-    python3 tree.py detect --dataset=/path/to/dataset --subset=train --weights=<last or /path/to/weights.h5>
+    python3 tree.py detect --dataset=/path/to/dataset --weights=<last or /path/to/weights.h5>
 """
 # Set matplotlib backend
 # This has to be done before other imports that might
@@ -64,6 +67,9 @@ DEFAULT_LOGS_DIR = os.path.join(ROOT_DIR, "logs")
 # Results directory
 # Save submission files here
 RESULTS_DIR = os.path.join(ROOT_DIR, "results/tree/")
+
+DEFAULT_SEED = 42
+DEFAULT_SPLIT = 0.1
 
 ############################################################
 #  Configurations
@@ -148,7 +154,7 @@ class TreeInferenceConfig(TreeConfig):
 
 
 class TreeDataset(utils.Dataset):
-    def load_tree(self, data_dir, split=0.1, val=False, seed=False):
+    def load_tree(self, data_dir, split=DEFAULT_SPLIT, val=False, seed=DEFAULT_SEED):
         """Load a subset of the tree dataset.
 
         data_dir: Root directory of the dataset
@@ -229,16 +235,16 @@ class TreeDataset(utils.Dataset):
 ############################################################
 
 
-def train(model, dataset_dir, subset):
+def train(model, dataset_dir, split=DEFAULT_SPLIT, seed=DEFAULT_SEED):
     """Train the model."""
     # Training dataset.
     dataset_train = TreeDataset()
-    dataset_train.load_tree(dataset_dir, subset)
+    dataset_train.load_tree(dataset_dir, split=split, seed=seed)
     dataset_train.prepare()
 
     # Validation dataset
     dataset_val = TreeDataset()
-    dataset_val.load_tree(dataset_dir, "val")
+    dataset_val.load_tree(dataset_dir, split=split, val=True, seed=seed)
     dataset_val.prepare()
 
     # Image augmentation
@@ -347,7 +353,7 @@ def mask_to_rle(image_id, mask, scores):
 ############################################################
 
 
-def detect(model, dataset_dir, subset):
+def detect(model, dataset_dir, split=DEFAULT_SPLIT, seed=DEFAULT_SEED, val=False):
     """Run detection on images in the given directory."""
     print("Running on {}".format(dataset_dir))
 
@@ -360,7 +366,7 @@ def detect(model, dataset_dir, subset):
 
     # Read dataset
     dataset = TreeDataset()
-    dataset.load_tree(dataset_dir, subset)
+    dataset.load_tree(dataset_dir, split=split, seed=seed, val=val)
     dataset.prepare()
     # Load over images
     submission = []
@@ -427,23 +433,35 @@ if __name__ == "__main__":
         help="Logs and checkpoints directory (default=logs/)",
     )
     parser.add_argument(
-        "--subset",
+        "--split",
         required=False,
-        metavar="Dataset sub-directory",
-        help="Subset of dataset to run prediction on",
+        default=DEFAULT_SPLIT,
+        metavar="Dataset train/test split",
+        help='The ratio with which to split the dataset into train and test.\
+use the "seed" argument to specify seed other than the DEFAULT_SEED value.',
+    )
+    parser.add_argument(
+        "--seed",
+        required=False,
+        default=DEFAULT_SEED,
+        metavar="Seed for the random dataset train/test split",
+        help="Overrides DEFAULT_SEED to alter the random selection of the train\
+test split.",
     )
     args = parser.parse_args()
 
     # Validate arguments
     if args.command == "train":
         assert args.dataset, "Argument --dataset is required for training"
-    elif args.command == "detect":
-        assert args.subset, "Provide --subset to run prediction on"
+    # elif args.command == "detect":
+    #     assert args.subset, "Provide --subset to run prediction on"
 
     print("Weights: ", args.weights)
     print("Dataset: ", args.dataset)
-    if args.subset:
-        print("Subset: ", args.subset)
+    if args.split:
+        print("Split: ", args.split)
+    if args.seed:
+        print("Seed:", args.seed)
     print("Logs: ", args.logs)
 
     # Configurations
@@ -489,8 +507,8 @@ if __name__ == "__main__":
 
     # Train or evaluate
     if args.command == "train":
-        train(model, args.dataset, args.subset)
+        train(model, args.dataset, args.split, args.seed)
     elif args.command == "detect":
-        detect(model, args.dataset, args.subset)
+        detect(model, args.dataset, args.split, args.seed, val=True)
     else:
         print("'{}' is not recognized. " "Use 'train' or 'detect'".format(args.command))

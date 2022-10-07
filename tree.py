@@ -86,6 +86,15 @@ class TreeConfig(Config):
     # number that your GPU can handle for best performance.
     IMAGES_PER_GPU = 8
 
+    # Number of training steps per epoch
+    # This doesn't need to match the size of the training set. Tensorboard
+    # updates are saved at the end of each epoch, so setting this to a
+    # smaller number means getting more frequent TensorBoard updates.
+    # Validation stats are also calculated at each epoch end and they
+    # might take a while, so don't set this too small to avoid spending
+    # a lot of time on validation stats.
+    STEPS_PER_EPOCH = 100
+
     # Number of classification classes (including background)
     NUM_CLASSES = 1 + 1  # Background + tree
 
@@ -270,7 +279,7 @@ def train(model, dataset_dir, split=DEFAULT_SPLIT, seed=DEFAULT_SEED):
         dataset_train,
         dataset_val,
         learning_rate=config.LEARNING_RATE,
-        epochs=20,
+        epochs=10,
         augmentation=augmentation,
         layers="heads",
     )
@@ -280,7 +289,7 @@ def train(model, dataset_dir, split=DEFAULT_SPLIT, seed=DEFAULT_SEED):
         dataset_train,
         dataset_val,
         learning_rate=config.LEARNING_RATE,
-        epochs=40,
+        epochs=10,
         augmentation=augmentation,
         layers="all",
     )

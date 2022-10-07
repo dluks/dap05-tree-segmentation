@@ -7,7 +7,6 @@ Licensed under the MIT License (see LICENSE for details)
 Written by Daniel Lusk
 
 ------------------------------------------------------------
-TODO: Change this section
 Usage: import the module (see Jupyter notebooks for examples), or run from
        the command line as such:
 
@@ -133,7 +132,7 @@ class TreeConfig(Config):
 
     # If enabled, resizes instance masks to a smaller size to reduce
     # memory load. Recommended when using high-resolution images.
-    USE_MINI_MASK = False
+    USE_MINI_MASK = True
     MINI_MASK_SHAPE = (56, 56)  # (height, width) of the mini-mask
 
 

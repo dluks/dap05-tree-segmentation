@@ -4,7 +4,8 @@ Train on Berlin Trees dataset from the University of
 Potsdam
 
 Licensed under the MIT License (see LICENSE for details)
-Written by Daniel Lusk
+Adapted from https://github.com/matterport/Mask_RCNN by Waleed Abdulla
+Modified by Daniel Lusk
 
 ------------------------------------------------------------
 Usage: import the module (see Jupyter notebooks for examples), or run from
@@ -167,10 +168,13 @@ class TreeInferenceConfig(TreeConfig):
 
 
 class TreeDataset(utils.Dataset):
-    def load_tree(self, data_dir, split=DEFAULT_SPLIT, val=False, seed=DEFAULT_SEED):
+    def load_tree(
+        self, data_dir, subset="all", split=DEFAULT_SPLIT, val=False, seed=DEFAULT_SEED
+    ):
         """Load a subset of the tree dataset.
 
         data_dir: Root directory of the dataset
+        subset: Subset to load. "hand", "watershed", or "all"
         split: The ratio for the training/validation split
         val: Set to True to load the validation set instead of the
         training set
@@ -181,7 +185,13 @@ class TreeDataset(utils.Dataset):
         # Naming the dataset tree, and the class tree
         self.add_class("tree", 1, "tree")
 
-        image_ids = os.listdir(data_dir)
+        assert subset in ["all", "hand", "watershed"]
+        if subset == "hand":
+            image_ids = [d for d in os.listdir(data_dir) if d.startswith("393")]
+        elif subset == "watershed":
+            image_ids = [d for d in os.listdir(data_dir) if d.startswith("watershed")]
+        else:
+            image_ids = os.listdir(data_dir)
 
         if not seed:
             rng = np.random.default_rng()
@@ -249,17 +259,22 @@ class TreeDataset(utils.Dataset):
 
 
 def train(
-    model, dataset_dir, split=DEFAULT_SPLIT, seed=DEFAULT_SEED, augmentation=None
+    model,
+    dataset_dir,
+    subset="all",
+    split=DEFAULT_SPLIT,
+    seed=DEFAULT_SEED,
+    augmentation=None,
 ):
     """Train the model."""
     # Training dataset.
     dataset_train = TreeDataset()
-    dataset_train.load_tree(dataset_dir, split=split, seed=seed)
+    dataset_train.load_tree(dataset_dir, subset=subset, split=split, seed=seed)
     dataset_train.prepare()
 
     # Validation dataset
     dataset_val = TreeDataset()
-    dataset_val.load_tree(dataset_dir, split=split, val=True, seed=seed)
+    dataset_val.load_tree(dataset_dir, subset=subset, split=split, val=True, seed=seed)
     dataset_val.prepare()
 
     # Image augmentation
@@ -373,7 +388,9 @@ def mask_to_rle(image_id, mask, scores):
 ############################################################
 
 
-def detect(model, dataset_dir, split=DEFAULT_SPLIT, seed=DEFAULT_SEED, val=False):
+def detect(
+    model, dataset_dir, subset="all", split=DEFAULT_SPLIT, seed=DEFAULT_SEED, val=False
+):
     """Run detection on images in the given directory."""
     print("Running on {}".format(dataset_dir))
 
@@ -386,7 +403,7 @@ def detect(model, dataset_dir, split=DEFAULT_SPLIT, seed=DEFAULT_SEED, val=False
 
     # Read dataset
     dataset = TreeDataset()
-    dataset.load_tree(dataset_dir, split=split, seed=seed, val=val)
+    dataset.load_tree(dataset_dir, subset=subset, split=split, seed=seed, val=val)
     dataset.prepare()
     # Load over images
     submission = []
@@ -451,6 +468,15 @@ if __name__ == "__main__":
         default=DEFAULT_LOGS_DIR,
         metavar="/path/to/logs/",
         help="Logs and checkpoints directory (default=logs/)",
+    )
+    parser.add_argument(
+        "--subset",
+        required=False,
+        type=str,
+        default="all",
+        metavar="Subset of data to load",
+        help='The subset of data to load. Acceptable values are "all", "hand",\
+and "watershed".',
     )
     parser.add_argument(
         "--split",
@@ -540,8 +566,8 @@ test split.",
 
     # Train or evaluate
     if args.command == "train":
-        train(model, args.dataset, args.split, args.seed, args.aug)
+        train(model, args.dataset, args.subset, args.split, args.seed, args.aug)
     elif args.command == "detect":
-        detect(model, args.dataset, args.split, args.seed, val=True)
+        detect(model, args.dataset, args.subset, args.split, args.seed, val=True)
     else:
         print("'{}' is not recognized. " "Use 'train' or 'detect'".format(args.command))

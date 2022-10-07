@@ -93,7 +93,7 @@ class TreeConfig(Config):
     # Validation stats are also calculated at each epoch end and they
     # might take a while, so don't set this too small to avoid spending
     # a lot of time on validation stats.
-    STEPS_PER_EPOCH = 100
+    STEPS_PER_EPOCH = 20
 
     # Number of classification classes (including background)
     NUM_CLASSES = 1 + 1  # Background + tree

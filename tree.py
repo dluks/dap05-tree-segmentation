@@ -93,7 +93,10 @@ class TreeConfig(Config):
     # Validation stats are also calculated at each epoch end and they
     # might take a while, so don't set this too small to avoid spending
     # a lot of time on validation stats.
-    STEPS_PER_EPOCH = 20
+    STEPS_PER_EPOCH = 100
+
+    # Reduce validation steps because the epoch is also reduced
+    VALIDATION_STEPS = 10
 
     # Number of classification classes (including background)
     NUM_CLASSES = 1 + 1  # Background + tree
@@ -106,7 +109,7 @@ class TreeConfig(Config):
     RPN_NMS_THRESHOLD = 0.9
 
     # How many anchors per image to use for RPN training
-    RPN_TRAIN_ANCHORS_PER_IMAGE = 128
+    RPN_TRAIN_ANCHORS_PER_IMAGE = 32
 
     # Input image resizing
     # Generally, use the "square" resizing mode for training and predicting
@@ -129,15 +132,15 @@ class TreeConfig(Config):
     #         size IMAGE_MIN_DIM x IMAGE_MIN_DIM. Can be used in training only.
     #         IMAGE_MAX_DIM is not used in this mode.
     IMAGE_RESIZE_MODE = "crop"
-    IMAGE_MIN_DIM = 512
-    IMAGE_MAX_DIM = 512
+    IMAGE_MIN_DIM = 128
+    IMAGE_MAX_DIM = 128
 
     # Image mean (RGB)
     MEAN_PIXEL = np.array([107.0, 105.2, 101.5])
 
     # Don't exclude based on confidence. Since we have two classes
     # then 0.5 is the minimum anyway as it picks between tree and BG
-    DETECTION_MIN_CONFIDENCE = 0
+    DETECTION_MIN_CONFIDENCE = 0.9
 
     # If enabled, resizes instance masks to a smaller size to reduce
     # memory load. Recommended when using high-resolution images.
@@ -150,10 +153,12 @@ class TreeInferenceConfig(TreeConfig):
     GPU_COUNT = 1
     IMAGES_PER_GPU = 1
     # Don't resize imager for inferencing
-    IMAGE_RESIZE_MODE = "pad64"
+    IMAGE_RESIZE_MODE = "none"
     # Non-max suppression threshold to filter RPN proposals.
     # You can increase this during training to generate more propsals.
     RPN_NMS_THRESHOLD = 0.7
+
+    USE_MINI_MASK = False
 
 
 ############################################################
@@ -243,7 +248,9 @@ class TreeDataset(utils.Dataset):
 ############################################################
 
 
-def train(model, dataset_dir, split=DEFAULT_SPLIT, seed=DEFAULT_SEED):
+def train(
+    model, dataset_dir, split=DEFAULT_SPLIT, seed=DEFAULT_SEED, augmentation=None
+):
     """Train the model."""
     # Training dataset.
     dataset_train = TreeDataset()
@@ -257,18 +264,23 @@ def train(model, dataset_dir, split=DEFAULT_SPLIT, seed=DEFAULT_SEED):
 
     # Image augmentation
     # http://imgaug.readthedocs.io/en/latest/source/augmenters.html
-    augmentation = iaa.SomeOf(
-        (0, 2),
-        [
-            iaa.Fliplr(0.5),
-            iaa.Flipud(0.5),
-            iaa.OneOf(
-                [iaa.Affine(rotate=90), iaa.Affine(rotate=180), iaa.Affine(rotate=270)]
-            ),
-            iaa.Multiply((0.8, 1.5)),
-            iaa.GaussianBlur(sigma=(0.0, 5.0)),
-        ],
-    )
+    if augmentation:
+        augmentation = iaa.SomeOf(
+            (0, 2),
+            [
+                iaa.Fliplr(0.5),
+                iaa.Flipud(0.5),
+                iaa.OneOf(
+                    [
+                        iaa.Affine(rotate=90),
+                        iaa.Affine(rotate=180),
+                        iaa.Affine(rotate=270),
+                    ]
+                ),
+                iaa.Multiply((0.8, 1.5)),
+                iaa.GaussianBlur(sigma=(0.0, 5.0)),
+            ],
+        )
 
     # *** This training schedule is an example. Update to your needs ***
 
@@ -279,7 +291,7 @@ def train(model, dataset_dir, split=DEFAULT_SPLIT, seed=DEFAULT_SEED):
         dataset_train,
         dataset_val,
         learning_rate=config.LEARNING_RATE,
-        epochs=10,
+        epochs=20,
         augmentation=augmentation,
         layers="heads",
     )
@@ -289,7 +301,7 @@ def train(model, dataset_dir, split=DEFAULT_SPLIT, seed=DEFAULT_SEED):
         dataset_train,
         dataset_val,
         learning_rate=config.LEARNING_RATE,
-        epochs=10,
+        epochs=40,
         augmentation=augmentation,
         layers="all",
     )
@@ -458,6 +470,14 @@ use the "seed" argument to specify seed other than the DEFAULT_SEED value.',
         help="Overrides DEFAULT_SEED to alter the random selection of the train\
 test split.",
     )
+    parser.add_argument(
+        "--aug",
+        required=False,
+        type=bool,
+        default=False,
+        metavar="Include augmentation",
+        help="Includes augmented data in training",
+    )
     args = parser.parse_args()
 
     # Validate arguments
@@ -473,6 +493,9 @@ test split.",
     if args.seed:
         print("Seed:", args.seed)
     print("Logs: ", args.logs)
+    if not args.aug:
+        # Convert aug argument to NoneType
+        args.aug = None
 
     # Configurations
     if args.command == "train":
@@ -517,7 +540,7 @@ test split.",
 
     # Train or evaluate
     if args.command == "train":
-        train(model, args.dataset, args.split, args.seed)
+        train(model, args.dataset, args.split, args.seed, args.aug)
     elif args.command == "detect":
         detect(model, args.dataset, args.split, args.seed, val=True)
     else:

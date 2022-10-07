@@ -434,6 +434,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--split",
         required=False,
+        type=float,
         default=DEFAULT_SPLIT,
         metavar="Dataset train/test split",
         help='The ratio with which to split the dataset into train and test.\
@@ -442,6 +443,7 @@ use the "seed" argument to specify seed other than the DEFAULT_SEED value.',
     parser.add_argument(
         "--seed",
         required=False,
+        type=int,
         default=DEFAULT_SEED,
         metavar="Seed for the random dataset train/test split",
         help="Overrides DEFAULT_SEED to alter the random selection of the train\

@@ -101,9 +101,15 @@ class TreeConfig(Config):
 
     # Number of classification classes (including background)
     NUM_CLASSES = 1 + 1  # Background + tree
+    
+    TRAIN_ROIS_PER_IMAGE = 200
 
     # Length of square anchor side in pixels
-    RPN_ANCHOR_SCALES = (8, 16, 32, 64, 128)
+    RPN_ANCHOR_SCALES = (16, 32, 64, 128)
+    
+    # Ratios of anchors at each cell (width/height)
+    # A value of 1 represents a square anchor, and 0.5 is a wide anchor
+    RPN_ANCHOR_RATIOS = [0.5, 1, 1.5]
 
     # Non-max suppression threshold to filter RPN proposals.
     # You can increase this during training to generate more proposals.
@@ -138,6 +144,12 @@ class TreeConfig(Config):
 
     # Image mean (RGB)
     MEAN_PIXEL = np.array([107.0, 105.2, 101.5])
+    
+    # Max number of final detections
+    DETECTION_MAX_INSTANCES = 100
+    
+    # Maximum number of ground truth instances to use in one image
+    MAX_GT_INSTANCES = 101
 
     # Don't exclude based on confidence. Since we have two classes
     # then 0.5 is the minimum anyway as it picks between tree and BG
@@ -147,6 +159,19 @@ class TreeConfig(Config):
     # memory load. Recommended when using high-resolution images.
     USE_MINI_MASK = False
     MINI_MASK_SHAPE = (56, 56)  # (height, width) of the mini-mask
+    
+    # Weight decay regularization
+    WEIGHT_DECAY = 0.005
+
+    # Loss weights for more precise optimization.
+    # Can be used for R-CNN training setup.
+    LOSS_WEIGHTS = {
+        "rpn_class_loss": 1.0,
+        "rpn_bbox_loss": 1.0,
+        "mrcnn_class_loss": 1.0,
+        "mrcnn_bbox_loss": 1.0,
+        "mrcnn_mask_loss": 1.0,
+    }
 
 
 class TreeInferenceConfig(TreeConfig):
@@ -297,29 +322,50 @@ def train(
             ],
         )
 
-    # *** This training schedule is an example. Update to your needs ***
-
-    # If starting from imagenet, train heads only for a bit
-    # since they have random weights
     print("Train network heads")
-    model.train(
-        dataset_train,
-        dataset_val,
-        learning_rate=config.LEARNING_RATE,
-        epochs=20,
-        augmentation=augmentation,
-        layers="heads",
-    )
+    model.train(dataset_train, dataset_val,
+                learning_rate=config.LEARNING_RATE,
+                epochs=20,
+                augmentation=augmentation,
+                layers='heads')
+    # Finetune layers from ResNet stage 4 and up
+    print("Fine tune Resnet stage 4 and up")
+    model.train(dataset_train, dataset_val,
+                learning_rate=config.LEARNING_RATE,
+                epochs=40,
+                layers='4+')
 
     print("Train all layers")
-    model.train(
-        dataset_train,
-        dataset_val,
-        learning_rate=config.LEARNING_RATE,
-        epochs=40,
-        augmentation=augmentation,
-        layers="all",
-    )
+    model.train(dataset_train, dataset_val,
+                learning_rate=config.LEARNING_RATE/10,
+                epochs=60,
+                augmentation=augmentation,
+                layers='all')
+
+#     # *** This training schedule is an example. Update to your needs ***
+
+#     # If starting from imagenet, train heads only for a bit
+#     # since they have random weights
+#     print("Train network heads")
+#     model.train(
+#         dataset_train,
+#         dataset_val,
+#         learning_rate=config.LEARNING_RATE,
+#         epochs=20,
+#         augmentation=augmentation,
+#         layers="heads",
+#     )
+
+#     print("Train all layers")
+#     model.train(
+#         dataset_train,
+#         dataset_val,
+#         learning_rate=config.LEARNING_RATE,
+#         epochs=40,
+#         augmentation=augmentation,
+#         layers="all",
+#     )
+
 
 
 ############################################################

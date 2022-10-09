@@ -94,19 +94,17 @@ class TreeConfig(Config):
     # Validation stats are also calculated at each epoch end and they
     # might take a while, so don't set this too small to avoid spending
     # a lot of time on validation stats.
-    STEPS_PER_EPOCH = 500
-
-    # Reduce validation steps because the epoch is also reduced
-    VALIDATION_STEPS = 50
+    STEPS_PER_EPOCH = 324 // IMAGES_PER_GPU
+    VALIDATION_STEPS = 36 // IMAGES_PER_GPU
 
     # Number of classification classes (including background)
     NUM_CLASSES = 1 + 1  # Background + tree
-    
+
     TRAIN_ROIS_PER_IMAGE = 200
 
     # Length of square anchor side in pixels
     RPN_ANCHOR_SCALES = (16, 32, 64, 128)
-    
+
     # Ratios of anchors at each cell (width/height)
     # A value of 1 represents a square anchor, and 0.5 is a wide anchor
     RPN_ANCHOR_RATIOS = [0.5, 1, 1.5]
@@ -117,6 +115,10 @@ class TreeConfig(Config):
 
     # How many anchors per image to use for RPN training
     RPN_TRAIN_ANCHORS_PER_IMAGE = 64
+
+    # Backbone network architecture
+    # Supported values are: resnet50, resnet101
+    BACKBONE = "resnet50"
 
     # Input image resizing
     # Generally, use the "square" resizing mode for training and predicting
@@ -144,22 +146,26 @@ class TreeConfig(Config):
 
     # Image mean (RGB)
     MEAN_PIXEL = np.array([107.0, 105.2, 101.5])
-    
+
     # Max number of final detections
     DETECTION_MAX_INSTANCES = 100
-    
+
     # Maximum number of ground truth instances to use in one image
     MAX_GT_INSTANCES = 101
 
+    # ROIs kept after non-maximum supression (training and inference)
+    POST_NMS_ROIS_TRAINING = 1000
+    POST_NMS_ROIS_INFERENCE = 2000
+
     # Don't exclude based on confidence. Since we have two classes
     # then 0.5 is the minimum anyway as it picks between tree and BG
-    DETECTION_MIN_CONFIDENCE = 0.5
+    DETECTION_MIN_CONFIDENCE = 0
 
     # If enabled, resizes instance masks to a smaller size to reduce
     # memory load. Recommended when using high-resolution images.
-    USE_MINI_MASK = False
+    USE_MINI_MASK = True
     MINI_MASK_SHAPE = (56, 56)  # (height, width) of the mini-mask
-    
+
     # Weight decay regularization
     WEIGHT_DECAY = 0.005
 
@@ -323,24 +329,35 @@ def train(
         )
 
     print("Train network heads")
-    model.train(dataset_train, dataset_val,
-                learning_rate=config.LEARNING_RATE,
-                epochs=20,
-                augmentation=augmentation,
-                layers='heads')
+    model.train(
+        dataset_train,
+        dataset_val,
+        learning_rate=config.LEARNING_RATE,
+        epochs=20,
+        augmentation=augmentation,
+        layers="heads",
+    )
+
     # Finetune layers from ResNet stage 4 and up
     print("Fine tune Resnet stage 4 and up")
-    model.train(dataset_train, dataset_val,
-                learning_rate=config.LEARNING_RATE,
-                epochs=40,
-                layers='4+')
+    model.train(
+        dataset_train,
+        dataset_val,
+        learning_rate=config.LEARNING_RATE,
+        epochs=100,
+        layers="4+",
+    )
 
     print("Train all layers")
-    model.train(dataset_train, dataset_val,
-                learning_rate=config.LEARNING_RATE/10,
-                epochs=60,
-                augmentation=augmentation,
-                layers='all')
+    model.train(
+        dataset_train,
+        dataset_val,
+        learning_rate=config.LEARNING_RATE / 10,
+        epochs=200,
+        augmentation=augmentation,
+        layers="all",
+    )
+
 
 #     # *** This training schedule is an example. Update to your needs ***
 
@@ -365,7 +382,6 @@ def train(
 #         augmentation=augmentation,
 #         layers="all",
 #     )
-
 
 
 ############################################################

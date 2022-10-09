@@ -94,10 +94,10 @@ class TreeConfig(Config):
     # Validation stats are also calculated at each epoch end and they
     # might take a while, so don't set this too small to avoid spending
     # a lot of time on validation stats.
-    STEPS_PER_EPOCH = 100
+    STEPS_PER_EPOCH = 500
 
     # Reduce validation steps because the epoch is also reduced
-    VALIDATION_STEPS = 10
+    VALIDATION_STEPS = 50
 
     # Number of classification classes (including background)
     NUM_CLASSES = 1 + 1  # Background + tree
@@ -318,7 +318,7 @@ def train(
                     ]
                 ),
                 iaa.Multiply((0.8, 1.5)),
-                iaa.GaussianBlur(sigma=(0.0, 5.0)),
+                iaa.GaussianBlur(sigma=(0.0, 1.0)),
             ],
         )
 

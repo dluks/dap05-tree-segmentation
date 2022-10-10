@@ -313,7 +313,9 @@ def train(
     # Adapt steps per epoch to dataset size
     class TrainConfig(TreeConfig):
         STEPS_PER_EPOCH = len(dataset_train.image_ids) // TreeConfig.IMAGES_PER_GPU
-        VALIDATION_STEPS = len(dataset_val.image_ids) // TreeConfig.IMAGES_PER_GPU
+        VALIDATION_STEPS = max(
+            1, len(dataset_val.image_ids) // TreeConfig.IMAGES_PER_GPU
+        )
 
     # Custom Callbacks
     from keras.callbacks import ReduceLROnPlateau

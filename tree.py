@@ -405,7 +405,7 @@ def train(
                                 ],
                             )
                         else:
-                            augmentation = False
+                            augmentation = None
 
                         # Learning rate decay
                         if lrd:

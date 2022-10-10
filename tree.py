@@ -290,7 +290,7 @@ class TreeDataset(utils.Dataset):
 
 
 def train(
-    model,
+    weights,
     dataset_dir,
     subset="all",
     split=DEFAULT_SPLIT,
@@ -298,6 +298,7 @@ def train(
     augmentation=None,
     gs=False,
 ):
+
     """Train the model."""
     # Training dataset.
     dataset_train = TreeDataset()
@@ -370,12 +371,15 @@ def train(
                 for aug in augs:
                     for anchor_scale in enumerate(anchor_scales):
 
+                        # Update the config
                         class GSConfig(TreeConfig):
                             LEARNING_RATE = eta
                             RPN_ANCHOR_SCALES = anchor_scale
 
                         config = GSConfig()
+                        config.display()
 
+                        # Augmentation
                         if aug:
                             augmentation = iaa.SomeOf(
                                 (0, 2),
@@ -396,6 +400,7 @@ def train(
                         else:
                             augmentation = False
 
+                        # Learning rate decay
                         if lrd:
                             cb = []
                             reduceLROnPlat = ReduceLROnPlateau(
@@ -410,6 +415,23 @@ def train(
                             )
                             cb.append(reduceLROnPlat)
 
+                        # Create model
+                        model = modellib.MaskRCNN(
+                            mode="training", config=config, model_dir=args.logs
+                        )
+                        # Use Coco weights
+                        model.load_weights(
+                            COCO_WEIGHTS_PATH,
+                            by_name=True,
+                            exclude=[
+                                "mrcnn_class_logits",
+                                "mrcnn_bbox_fc",
+                                "mrcnn_bbox",
+                                "mrcnn_mask",
+                            ],
+                        )
+
+                        # Train model
                         model.train(
                             dataset_train,
                             dataset_val,
@@ -420,6 +442,46 @@ def train(
                             custom_callbacks=cb,
                         )
     else:
+        # Configurations
+        config = TreeConfig()
+        config.display()
+
+        # Create model
+        model = modellib.MaskRCNN(mode="training", config=config, model_dir=args.logs)
+
+        # Select weights file to load
+        if weights == "coco":
+            weights_path = COCO_WEIGHTS_PATH
+            # Download weights file
+            if not os.path.exists(weights_path):
+                utils.download_trained_weights(weights_path)
+        elif weights == "last":
+            # Find last trained weights
+            weights_path = model.find_last()
+        elif weights == "imagenet":
+            # Start from ImageNet trained weights
+            weights_path = model.get_imagenet_weights()
+        else:
+            weights_path = weights
+
+        # Load weights
+        print("Loading weights ", weights_path)
+        if weights == "coco":
+            # Exclude the last layers because they require a matching
+            # number of classes
+            model.load_weights(
+                weights_path,
+                by_name=True,
+                exclude=[
+                    "mrcnn_class_logits",
+                    "mrcnn_bbox_fc",
+                    "mrcnn_bbox",
+                    "mrcnn_mask",
+                ],
+            )
+        else:
+            model.load_weights(weights_path, by_name=True)
+
         print("Train network heads")
         model.train(
             dataset_train,
@@ -449,31 +511,6 @@ def train(
             augmentation=augmentation,
             layers="all",
         )
-
-
-#     # *** This training schedule is an example. Update to your needs ***
-
-#     # If starting from imagenet, train heads only for a bit
-#     # since they have random weights
-#     print("Train network heads")
-#     model.train(
-#         dataset_train,
-#         dataset_val,
-#         learning_rate=config.LEARNING_RATE,
-#         epochs=20,
-#         augmentation=augmentation,
-#         layers="heads",
-#     )
-
-#     print("Train all layers")
-#     model.train(
-#         dataset_train,
-#         dataset_val,
-#         learning_rate=config.LEARNING_RATE,
-#         epochs=40,
-#         augmentation=augmentation,
-#         layers="all",
-#     )
 
 
 ############################################################
@@ -687,50 +724,56 @@ optimization purposes.",
         args.aug = None
 
     # Configurations
-    if args.command == "train":
-        config = TreeConfig()
-    else:
+    if args.command == "detect":
         config = TreeInferenceConfig()
-    config.display()
+        config.display()
 
-    # Create model
-    if args.command == "train":
+        # Create model
         model = modellib.MaskRCNN(mode="training", config=config, model_dir=args.logs)
-    else:
-        model = modellib.MaskRCNN(mode="inference", config=config, model_dir=args.logs)
 
-    # Select weights file to load
-    if args.weights.lower() == "coco":
-        weights_path = COCO_WEIGHTS_PATH
-        # Download weights file
-        if not os.path.exists(weights_path):
-            utils.download_trained_weights(weights_path)
-    elif args.weights.lower() == "last":
-        # Find last trained weights
-        weights_path = model.find_last()
-    elif args.weights.lower() == "imagenet":
-        # Start from ImageNet trained weights
-        weights_path = model.get_imagenet_weights()
-    else:
-        weights_path = args.weights
+        # Select weights file to load
+        if args.weights.lower() == "coco":
+            weights_path = COCO_WEIGHTS_PATH
+            # Download weights file
+            if not os.path.exists(weights_path):
+                utils.download_trained_weights(weights_path)
+        elif args.weights.lower() == "last":
+            # Find last trained weights
+            weights_path = model.find_last()
+        elif args.weights.lower() == "imagenet":
+            # Start from ImageNet trained weights
+            weights_path = model.get_imagenet_weights()
+        else:
+            weights_path = args.weights
 
-    # Load weights
-    print("Loading weights ", weights_path)
-    if args.weights.lower() == "coco":
-        # Exclude the last layers because they require a matching
-        # number of classes
-        model.load_weights(
-            weights_path,
-            by_name=True,
-            exclude=["mrcnn_class_logits", "mrcnn_bbox_fc", "mrcnn_bbox", "mrcnn_mask"],
-        )
-    else:
-        model.load_weights(weights_path, by_name=True)
+        # Load weights
+        print("Loading weights ", weights_path)
+        if args.weights.lower() == "coco":
+            # Exclude the last layers because they require a matching
+            # number of classes
+            model.load_weights(
+                weights_path,
+                by_name=True,
+                exclude=[
+                    "mrcnn_class_logits",
+                    "mrcnn_bbox_fc",
+                    "mrcnn_bbox",
+                    "mrcnn_mask",
+                ],
+            )
+        else:
+            model.load_weights(weights_path, by_name=True)
 
     # Train or evaluate
     if args.command == "train":
         train(
-            model, args.dataset, args.subset, args.split, args.seed, args.aug, args.gs
+            weights=args.weights.lower(),
+            dataset_dir=args.dataset,
+            subset=args.subset,
+            split=args.split,
+            seed=args.seed,
+            augmentation=args.aug,
+            gs=args.gs,
         )
     elif args.command == "detect":
         detect(model, args.dataset, args.subset, args.split, args.seed, val=True)

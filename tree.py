@@ -366,7 +366,6 @@ def train(
             ],
         )
 
-    cb = False
     if gs:
         etas = [0.02, 0.0001, 0.00001]
         lr_decay = [True, False]
@@ -421,6 +420,8 @@ def train(
                                 min_lr=0.00001,
                             )
                             cb.append(reduceLROnPlat)
+                        else:
+                            cb = None
 
                         # Create model
                         model = modellib.MaskRCNN(

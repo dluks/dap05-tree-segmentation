@@ -118,7 +118,7 @@ class TreeConfig(Config):
 
     # Backbone network architecture
     # Supported values are: resnet50, resnet101
-    BACKBONE = "resnet50"
+    BACKBONE = "resnet101"
 
     # Input image resizing
     # Generally, use the "square" resizing mode for training and predicting
@@ -159,7 +159,7 @@ class TreeConfig(Config):
 
     # Don't exclude based on confidence. Since we have two classes
     # then 0.5 is the minimum anyway as it picks between tree and BG
-    DETECTION_MIN_CONFIDENCE = 0
+    DETECTION_MIN_CONFIDENCE = 0.6
 
     # If enabled, resizes instance masks to a smaller size to reduce
     # memory load. Recommended when using high-resolution images.
@@ -296,6 +296,7 @@ def train(
     split=DEFAULT_SPLIT,
     seed=DEFAULT_SEED,
     augmentation=None,
+    gs=False,
 ):
     """Train the model."""
     # Training dataset.
@@ -307,6 +308,35 @@ def train(
     dataset_val = TreeDataset()
     dataset_val.load_tree(dataset_dir, subset=subset, split=split, val=True, seed=seed)
     dataset_val.prepare()
+
+    # Custom Callbacks
+    from keras.callbacks import ReduceLROnPlateau
+
+    def callback():
+        cb = []
+        #     checkpoint = ModelCheckpoint(
+        #         DEFAULT_LOGS_DIR + "tree_wg.h5",
+        #         save_best_only=True,
+        #         mode="min",
+        #         monitor="val_loss",
+        #         save_weights_only=True,
+        #         verbose=1,
+        #     )
+        #     cb.append(checkpoint)
+        reduceLROnPlat = ReduceLROnPlateau(
+            monitor="val_loss",
+            factor=0.3,
+            patience=5,
+            verbose=1,
+            mode="auto",
+            min_delta=0.0001,
+            cooldown=1,
+            min_lr=0.00001,
+        )
+        #     log = CSVLogger(packages_root + "wheat_history.csv")
+        #     cb.append(log)
+        cb.append(reduceLROnPlat)
+        return cb
 
     # Image augmentation
     # http://imgaug.readthedocs.io/en/latest/source/augmenters.html
@@ -328,35 +358,97 @@ def train(
             ],
         )
 
-    print("Train network heads")
-    model.train(
-        dataset_train,
-        dataset_val,
-        learning_rate=config.LEARNING_RATE,
-        epochs=20,
-        augmentation=augmentation,
-        layers="heads",
-    )
+    cb = False
+    if gs:
+        etas = [0.02, 0.0001, 0.00001]
+        lr_decay = [True, False]
+        anchor_scales = [(16, 32, 64, 128), (8, 16, 32, 64)]
+        augs = [True, False]
 
-    # Finetune layers from ResNet stage 4 and up
-    print("Fine tune Resnet stage 4 and up")
-    model.train(
-        dataset_train,
-        dataset_val,
-        learning_rate=config.LEARNING_RATE,
-        epochs=100,
-        layers="4+",
-    )
+        for eta in etas:
+            for lrd in lr_decay:
+                for aug in augs:
+                    for anchor_scale in enumerate(anchor_scales):
 
-    print("Train all layers")
-    model.train(
-        dataset_train,
-        dataset_val,
-        learning_rate=config.LEARNING_RATE / 10,
-        epochs=200,
-        augmentation=augmentation,
-        layers="all",
-    )
+                        class GSConfig(TreeConfig):
+                            LEARNING_RATE = eta
+                            RPN_ANCHOR_SCALES = anchor_scale
+
+                        config = GSConfig()
+
+                        if aug:
+                            augmentation = iaa.SomeOf(
+                                (0, 2),
+                                [
+                                    iaa.Fliplr(0.5),
+                                    iaa.Flipud(0.5),
+                                    iaa.OneOf(
+                                        [
+                                            iaa.Affine(rotate=90),
+                                            iaa.Affine(rotate=180),
+                                            iaa.Affine(rotate=270),
+                                        ]
+                                    ),
+                                    iaa.Multiply((0.8, 1.5)),
+                                    iaa.GaussianBlur(sigma=(0.0, 1.0)),
+                                ],
+                            )
+                        else:
+                            augmentation = False
+
+                        if lrd:
+                            cb = []
+                            reduceLROnPlat = ReduceLROnPlateau(
+                                monitor="val_loss",
+                                factor=0.3,
+                                patience=5,
+                                verbose=1,
+                                mode="auto",
+                                min_delta=0.0001,
+                                cooldown=1,
+                                min_lr=0.00001,
+                            )
+                            cb.append(reduceLROnPlat)
+
+                        model.train(
+                            dataset_train,
+                            dataset_val,
+                            learning_rate=config.LEARNING_RATE,
+                            epochs=10,
+                            augmentation=augmentation,
+                            layers="all",
+                            custom_callbacks=cb,
+                        )
+    else:
+        print("Train network heads")
+        model.train(
+            dataset_train,
+            dataset_val,
+            learning_rate=config.LEARNING_RATE,
+            epochs=20,
+            augmentation=augmentation,
+            layers="heads",
+        )
+
+        # Finetune layers from ResNet stage 4 and up
+        print("Fine tune Resnet stage 4 and up")
+        model.train(
+            dataset_train,
+            dataset_val,
+            learning_rate=config.LEARNING_RATE,
+            epochs=100,
+            layers="4+",
+        )
+
+        print("Train all layers")
+        model.train(
+            dataset_train,
+            dataset_val,
+            learning_rate=config.LEARNING_RATE / 10,
+            epochs=200,
+            augmentation=augmentation,
+            layers="all",
+        )
 
 
 #     # *** This training schedule is an example. Update to your needs ***
@@ -566,6 +658,15 @@ test split.",
         metavar="Include augmentation",
         help="Includes augmented data in training",
     )
+    parser.add_argument(
+        "--gs",
+        required=False,
+        type=bool,
+        default=False,
+        metavar="Run Grid Search",
+        help="Iterates over a number of hyperparameters with a short epoch period for\
+optimization purposes.",
+    )
     args = parser.parse_args()
 
     # Validate arguments
@@ -628,7 +729,9 @@ test split.",
 
     # Train or evaluate
     if args.command == "train":
-        train(model, args.dataset, args.subset, args.split, args.seed, args.aug)
+        train(
+            model, args.dataset, args.subset, args.split, args.seed, args.aug, args.gs
+        )
     elif args.command == "detect":
         detect(model, args.dataset, args.subset, args.split, args.seed, val=True)
     else:

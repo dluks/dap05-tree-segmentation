@@ -310,6 +310,11 @@ def train(
     dataset_val.load_tree(dataset_dir, subset=subset, split=split, val=True, seed=seed)
     dataset_val.prepare()
 
+    # Adapt steps per epoch to dataset size
+    class TrainConfig(TreeConfig):
+        STEPS_PER_EPOCH = len(dataset_train.image_ids) // TreeConfig.IMAGES_PER_GPU
+        VALIDATION_STEPS = len(dataset_val.image_ids) // TreeConfig.IMAGES_PER_GPU
+
     # Custom Callbacks
     from keras.callbacks import ReduceLROnPlateau
 
@@ -372,7 +377,7 @@ def train(
                     for anchor_scale in anchor_scales:
 
                         # Update the config
-                        class GSConfig(TreeConfig):
+                        class GSConfig(TrainConfig):
                             LEARNING_RATE = eta
                             RPN_ANCHOR_SCALES = anchor_scale
 
@@ -443,7 +448,7 @@ def train(
                         )
     else:
         # Configurations
-        config = TreeConfig()
+        config = TrainConfig()
         config.display()
 
         # Create model

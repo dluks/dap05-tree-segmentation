@@ -368,87 +368,85 @@ def train(
 
     if gs:
         etas = [0.02, 0.0001, 0.00001]
-        lr_decay = [True, False]
+        lr_decay = [False, False]
         anchor_scales = [(16, 32, 64, 128), (8, 16, 32, 64)]
         augs = [True, False]
 
         for eta in etas:
-            for lrd in lr_decay:
-                for aug in augs:
-                    for anchor_scale in anchor_scales:
+            for aug in augs:
+                for anchor_scale in anchor_scales:
 
-                        # Update the config
-                        class GSConfig(TrainConfig):
-                            LEARNING_RATE = eta
-                            RPN_ANCHOR_SCALES = anchor_scale
+                    # Update the config
+                    class GSConfig(TrainConfig):
+                        LEARNING_RATE = eta
+                        RPN_ANCHOR_SCALES = anchor_scale
 
-                        config = GSConfig()
-                        config.display()
+                    config = GSConfig()
+                    config.display()
 
-                        # Augmentation
-                        if aug:
-                            augmentation = iaa.SomeOf(
-                                (0, 2),
-                                [
-                                    iaa.Fliplr(0.5),
-                                    iaa.Flipud(0.5),
-                                    iaa.OneOf(
-                                        [
-                                            iaa.Affine(rotate=90),
-                                            iaa.Affine(rotate=180),
-                                            iaa.Affine(rotate=270),
-                                        ]
-                                    ),
-                                    iaa.Multiply((0.8, 1.5)),
-                                    iaa.GaussianBlur(sigma=(0.0, 1.0)),
-                                ],
-                            )
-                        else:
-                            augmentation = None
-
-                        # Learning rate decay
-                        if lrd:
-                            cb = []
-                            reduceLROnPlat = ReduceLROnPlateau(
-                                monitor="val_loss",
-                                factor=0.3,
-                                patience=5,
-                                verbose=1,
-                                mode="auto",
-                                min_delta=0.0001,
-                                cooldown=1,
-                                min_lr=0.00001,
-                            )
-                            cb.append(reduceLROnPlat)
-                        else:
-                            cb = None
-
-                        # Create model
-                        model = modellib.MaskRCNN(
-                            mode="training", config=config, model_dir=args.logs
-                        )
-                        # Use Coco weights
-                        model.load_weights(
-                            COCO_WEIGHTS_PATH,
-                            by_name=True,
-                            exclude=[
-                                "mrcnn_class_logits",
-                                "mrcnn_bbox_fc",
-                                "mrcnn_bbox",
-                                "mrcnn_mask",
+                    # Augmentation
+                    if aug:
+                        augmentation = iaa.SomeOf(
+                            (0, 2),
+                            [
+                                iaa.Fliplr(0.5),
+                                iaa.Flipud(0.5),
+                                iaa.OneOf(
+                                    [
+                                        iaa.Affine(rotate=90),
+                                        iaa.Affine(rotate=180),
+                                        iaa.Affine(rotate=270),
+                                    ]
+                                ),
+                                iaa.Multiply((0.8, 1.5)),
+                                iaa.GaussianBlur(sigma=(0.0, 1.0)),
                             ],
                         )
+                    else:
+                        augmentation = None
 
-                        # Train model
-                        model.train(
-                            dataset_train,
-                            dataset_val,
-                            learning_rate=config.LEARNING_RATE,
-                            epochs=10,
-                            augmentation=augmentation,
-                            layers="all",
-                            custom_callbacks=cb,
-                        )
+                    # Learning rate decay
+                    # if lrd:
+                    #     cb = []
+                    #     reduceLROnPlat = ReduceLROnPlateau(
+                    #         monitor="val_loss",
+                    #         factor=0.3,
+                    #         patience=5,
+                    #         verbose=1,
+                    #         mode="auto",
+                    #         min_delta=0.0001,
+                    #         cooldown=1,
+                    #         min_lr=0.00001,
+                    #     )
+                    #     cb.append(reduceLROnPlat)
+                    # else:
+                    #     cb = None
+
+                    # Create model
+                    model = modellib.MaskRCNN(
+                        mode="training", config=config, model_dir=args.logs
+                    )
+                    # Use Coco weights
+                    model.load_weights(
+                        COCO_WEIGHTS_PATH,
+                        by_name=True,
+                        exclude=[
+                            "mrcnn_class_logits",
+                            "mrcnn_bbox_fc",
+                            "mrcnn_bbox",
+                            "mrcnn_mask",
+                        ],
+                    )
+
+                    # Train model
+                    model.train(
+                        dataset_train,
+                        dataset_val,
+                        learning_rate=config.LEARNING_RATE,
+                        epochs=10,
+                        augmentation=augmentation,
+                        layers="all",
+                    )
     else:
         # Configurations
         config = TrainConfig()

@@ -369,7 +369,7 @@ def train(
         for eta in etas:
             for lrd in lr_decay:
                 for aug in augs:
-                    for anchor_scale in enumerate(anchor_scales):
+                    for anchor_scale in anchor_scales:
 
                         # Update the config
                         class GSConfig(TreeConfig):

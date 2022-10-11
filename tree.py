@@ -193,8 +193,8 @@ class TreeInferenceConfig(TreeConfig):
 
     USE_MINI_MASK = False
 
-    RPN_ANCHOR_SCALES = (8, 16, 32, 64)
-    LEARNING_RATE = 0.02
+    # RPN_ANCHOR_SCALES = (8, 16, 32, 64)
+    LEARNING_RATE = 0.001
 
 
 ############################################################
@@ -391,8 +391,6 @@ def train(
         )
 
     if gs:
-        dataset_train, dataset_val = dataset()
-        config = train_config(dataset_train, dataset_val)
         etas = [0.0001, 0.00001]
         eta_labels = ["1e-4", "1e-5"]
         # lr_decay = [False, False]
@@ -402,8 +400,9 @@ def train(
 
         for i, eta in enumerate(etas):
             for j, anchor_scale in enumerate(anchor_scales):
-
-                # Update the config
+                dataset_train, dataset_val = dataset()
+                config = train_config(dataset_train, dataset_val)
+                # Update the config with new i, j vals
                 class GSConfig(config):
                     LEARNING_RATE = eta
                     RPN_ANCHOR_SCALES = anchor_scale

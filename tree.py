@@ -370,8 +370,8 @@ def train(
         )
 
     if gs:
-        etas = [0.02, 0.001, 0.0001, 0.00001]
-        eta_labels = ["2e-2", "1e-3", "1e-4", "1e-5"]
+        etas = [0.0001, 0.00001]
+        eta_labels = ["1e-4", "1e-5"]
         # lr_decay = [False, False]
         anchor_scales = [(16, 32, 64, 128), (8, 16, 32, 64)]
         anchor_labels = ["16-128", "8-64"]

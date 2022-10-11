@@ -45,6 +45,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 import tifffile as tiff
 from imgaug import augmenters as iaa
+from keras import backend as K
 
 # Root directory of the project
 MRCNN_DIR = os.path.abspath("../Mask_RCNN/")
@@ -301,24 +302,44 @@ def train(
     augmentation=None,
     gs=False,
 ):
-
-    """Train the model."""
-    # Training dataset.
-    dataset_train = TreeDataset()
-    dataset_train.load_tree(dataset_dir, subset=subset, split=split, seed=seed)
-    dataset_train.prepare()
-
-    # Validation dataset
-    dataset_val = TreeDataset()
-    dataset_val.load_tree(dataset_dir, subset=subset, split=split, val=True, seed=seed)
-    dataset_val.prepare()
-
-    # Adapt steps per epoch to dataset size
-    class TrainConfig(TreeConfig):
-        STEPS_PER_EPOCH = len(dataset_train.image_ids) // TreeConfig.IMAGES_PER_GPU
-        VALIDATION_STEPS = max(
-            1, len(dataset_val.image_ids) // TreeConfig.IMAGES_PER_GPU
+    def dataset():
+        """Train the model."""
+        # Training dataset.
+        dataset_train = TreeDataset()
+        dataset_train.load_tree(dataset_dir, subset=subset, split=split, seed=seed)
+        dataset_train.prepare()
+        # Validation dataset
+        dataset_val = TreeDataset()
+        dataset_val.load_tree(
+            dataset_dir, subset=subset, split=split, val=True, seed=seed
         )
+        dataset_val.prepare()
+        return dataset_train, dataset_val
+
+    def train_config(dataset_train, dataset_val):
+        # Adapt steps per epoch to dataset size
+        class TrainConfig(TreeConfig):
+            STEPS_PER_EPOCH = len(dataset_train.image_ids) // TreeConfig.IMAGES_PER_GPU
+            VALIDATION_STEPS = max(
+                1, len(dataset_val.image_ids) // TreeConfig.IMAGES_PER_GPU
+            )
+
+        return TrainConfig
+
+    def reduceLROnPlat():
+        from keras.callbacks import ReduceLROnPlateau
+
+        r = ReduceLROnPlateau(
+            monitor="val_loss",
+            factor=0.3,
+            patience=5,
+            verbose=1,
+            mode="auto",
+            min_delta=0.0001,
+            cooldown=1,
+            min_lr=0.00001,
+        )
+        return r
 
     # Custom Callbacks
     from keras.callbacks import ModelCheckpoint, CSVLogger
@@ -326,7 +347,7 @@ def train(
     def callback(cust_st):
         cb = []
         checkpoint = ModelCheckpoint(
-            DEFAULT_LOGS_DIR + "tree" + cust_st + "_wg.h5",
+            DEFAULT_LOGS_DIR + "/tree" + cust_st + "_wg.h5",
             save_best_only=True,
             mode="min",
             monitor="val_loss",
@@ -344,7 +365,7 @@ def train(
         #     cooldown=1,
         #     min_lr=0.00001,
         # )
-        log = CSVLogger(DEFAULT_LOGS_DIR + "tree" + cust_st + "_history.csv")
+        log = CSVLogger(DEFAULT_LOGS_DIR + "/tree" + cust_st + "_history.csv")
         cb.append(log)
         # cb.append(reduceLROnPlat)
         return cb
@@ -370,6 +391,8 @@ def train(
         )
 
     if gs:
+        dataset_train, dataset_val = dataset()
+        config = train_config(dataset_train, dataset_val)
         etas = [0.0001, 0.00001]
         eta_labels = ["1e-4", "1e-5"]
         # lr_decay = [False, False]
@@ -381,7 +404,7 @@ def train(
             for j, anchor_scale in enumerate(anchor_scales):
 
                 # Update the config
-                class GSConfig(TrainConfig):
+                class GSConfig(config):
                     LEARNING_RATE = eta
                     RPN_ANCHOR_SCALES = anchor_scale
 
@@ -449,14 +472,17 @@ def train(
                     dataset_train,
                     dataset_val,
                     learning_rate=config.LEARNING_RATE,
-                    epochs=20,
+                    epochs=30,
                     augmentation=augmentation,
                     layers="all",
                     custom_callbacks=cb,
                 )
+                # clear memory
+                del dataset_train, dataset_val, config
+                K.clear_session()
     else:
-        # Configurations
-        config = TrainConfig()
+        dataset_train, dataset_val = dataset()
+        config = train_config(dataset_train, dataset_val)
         config.display()
 
         # Create model

@@ -141,7 +141,7 @@ class TreeConfig(Config):
     #         on IMAGE_MIN_DIM and IMAGE_MIN_SCALE, then picks a random crop of
     #         size IMAGE_MIN_DIM x IMAGE_MIN_DIM. Can be used in training only.
     #         IMAGE_MAX_DIM is not used in this mode.
-    IMAGE_RESIZE_MODE = "crop"
+    IMAGE_RESIZE_MODE = "none"
     IMAGE_MIN_DIM = 128
     IMAGE_MAX_DIM = 128
 
@@ -333,7 +333,7 @@ def train(
 
         r = ReduceLROnPlateau(
             monitor="val_loss",
-            factor=0.3,
+            factor=0.1,
             patience=5,
             verbose=1,
             mode="auto",

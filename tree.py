@@ -104,7 +104,7 @@ class TreeConfig(Config):
     TRAIN_ROIS_PER_IMAGE = 200
 
     # Length of square anchor side in pixels
-    RPN_ANCHOR_SCALES = (16, 32, 64, 128)
+    RPN_ANCHOR_SCALES = (8, 16, 32, 64)
 
     # Ratios of anchors at each cell (width/height)
     # A value of 1 represents a square anchor, and 0.5 is a wide anchor
@@ -319,9 +319,11 @@ def train(
     def train_config(dataset_train, dataset_val):
         # Adapt steps per epoch to dataset size
         class TrainConfig(TreeConfig):
-            STEPS_PER_EPOCH = len(dataset_train.image_ids) // TreeConfig.IMAGES_PER_GPU
+            STEPS_PER_EPOCH = (
+                len(dataset_train.image_ids) // TreeConfig.IMAGES_PER_GPU * 2
+            )
             VALIDATION_STEPS = max(
-                1, len(dataset_val.image_ids) // TreeConfig.IMAGES_PER_GPU
+                2, len(dataset_val.image_ids) // TreeConfig.IMAGES_PER_GPU * 2
             )
 
         return TrainConfig
@@ -355,19 +357,10 @@ def train(
             verbose=1,
         )
         cb.append(checkpoint)
-        # reduceLROnPlat = ReduceLROnPlateau(
-        #     monitor="val_loss",
-        #     factor=0.3,
-        #     patience=5,
-        #     verbose=1,
-        #     mode="auto",
-        #     min_delta=0.0001,
-        #     cooldown=1,
-        #     min_lr=0.00001,
-        # )
+        lr_decay = reduceLROnPlat()
+        cb.append(lr_decay)
         log = CSVLogger(DEFAULT_LOGS_DIR + "/tree" + cust_st + "_history.csv")
         cb.append(log)
-        # cb.append(reduceLROnPlat)
         return cb
 
     # Image augmentation
@@ -401,9 +394,10 @@ def train(
         for i, eta in enumerate(etas):
             for j, anchor_scale in enumerate(anchor_scales):
                 dataset_train, dataset_val = dataset()
-                config = train_config(dataset_train, dataset_val)
+                Config = train_config(dataset_train, dataset_val)
+
                 # Update the config with new i, j vals
-                class GSConfig(config):
+                class GSConfig(Config):
                     LEARNING_RATE = eta
                     RPN_ANCHOR_SCALES = anchor_scale
 
@@ -527,29 +521,10 @@ def train(
             dataset_train,
             dataset_val,
             learning_rate=config.LEARNING_RATE,
-            epochs=20,
+            epochs=300,
             augmentation=augmentation,
             layers="heads",
-        )
-
-        # Finetune layers from ResNet stage 4 and up
-        print("Fine tune Resnet stage 4 and up")
-        model.train(
-            dataset_train,
-            dataset_val,
-            learning_rate=config.LEARNING_RATE,
-            epochs=100,
-            layers="4+",
-        )
-
-        print("Train all layers")
-        model.train(
-            dataset_train,
-            dataset_val,
-            learning_rate=config.LEARNING_RATE / 10,
-            epochs=200,
-            augmentation=augmentation,
-            layers="all",
+            custom_callbacks=callback("strict_only-heads"),
         )
 
 

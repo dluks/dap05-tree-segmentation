@@ -2,7 +2,6 @@
 import glob
 
 import numpy as np
-import tensorflow as tf
 import tifffile as tiff
 from patchify import patchify
 from sklearn.model_selection import KFold, train_test_split
@@ -15,7 +14,7 @@ from tensorflow.keras.layers import (
     Input,
     MaxPool2D,
 )
-from tensorflow.keras.metrics import BinaryIoU, MeanIoU
+from tensorflow.keras.metrics import BinaryIoU
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tqdm import tqdm
@@ -187,6 +186,8 @@ etas = np.array([1e-2, 2e-2])
 # batch_sizes = np.array([16, 32])
 # etas = np.array([5e-2, 1e-1])
 
+# GRID SEARCH SET THREE (what parameters should we test?)
+
 # Data structure for future grid search data storage
 n_folds = 10
 data = np.zeros((n_folds, batch_sizes.size, etas.size, 7), dtype=object)
@@ -232,8 +233,8 @@ for i, (itrain, itest) in enumerate(
             # Loss and accuracies from each epoch
             loss = history.history["loss"]
             val_loss = history.history["val_loss"]
-            iou = list(history.history.keys())[1]
-            val_iou = list(history.history.keys())[3]
+            iou = history.history[list(history.history.keys())[1]]
+            val_iou = history.history[list(history.history.keys())[3]]
 
             # Test the model on the preserved test data
             y_pred = model.predict(x_test)

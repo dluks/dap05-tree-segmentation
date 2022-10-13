@@ -224,7 +224,7 @@ class TreeDataset(utils.Dataset):
         if subset == "hand":
             image_ids = [d for d in os.listdir(data_dir) if d.startswith("393")]
         elif subset == "watershed":
-            image_ids = [d for d in os.listdir(data_dir) if d.startswith("watershed")]
+            image_ids = [d for d in os.listdir(data_dir) if d.startswith("RGBI")]
         else:
             image_ids = os.listdir(data_dir)
 
@@ -475,7 +475,7 @@ def train(
                 K.clear_session()
     else:
         dataset_train, dataset_val = dataset()
-        config = train_config(dataset_train, dataset_val)
+        config = train_config(dataset_train, dataset_val)()
         config.display()
 
         # Create model

@@ -107,20 +107,29 @@ if __name__ == "__main__":
 
     parser.add_argument("--patch", action="store_true", default=False)
     parser.add_argument("--mrcnn", action="store_true", default=False)
+    parser.add_argument("--dataset", type=str, default=False)
 
     args = parser.parse_args()
+    
+    dataset = args.dataset if args.dataset else "watershed"
 
     if args.patch:
         patch_size = 256
+        data_dir = os.path.join("../data", dataset)
+        
+        if dataset == "watershed":
+            rgb_in = os.path.join(data_dir, "rgbi/loose/")
+            label_in = os.path.join(data_dir, "labels/loose")
 
-        data_dir = "../data/watershed/"
-        # Unpatchified directories
-        rgb_in = os.path.join(data_dir, "rgbi/loose/")
-        label_in = os.path.join(data_dir, "labels/loose")
+            rgb_out = os.path.join(data_dir, f"rgbi/loose/{patch_size}/")
+            label_out = os.path.join(data_dir, f"labels/loose/{patch_size}/")
+        
+        elif dataset == "hand":
+            rgb_in = os.path.join(data_dir, "rgb")
+            label_in = os.path.join(data_dir, "label")
 
-        # Patchified directories
-        rgb_out = os.path.join(data_dir, f"rgbi/loose/{patch_size}/")
-        label_out = os.path.join(data_dir, f"labels/loose/{patch_size}/")
+            rgb_out = os.path.join(data_dir, f"rgb/{patch_size}/")
+            label_out = os.path.join(data_dir, f"label/{patch_size}/")
 
         if not os.path.exists(rgb_out):
             os.makedirs(rgb_out)
@@ -132,7 +141,12 @@ if __name__ == "__main__":
 
     if args.mrcnn:
         data_dir = "../data/"
-        rgb = os.path.join(data_dir, "watershed/rgbi/loose/256")
-        label = os.path.join(data_dir, "watershed/labels/loose/256")
+        
+        if dataset == "watershed":
+            rgb = os.path.join(data_dir, dataset, "rgbi/loose/256")
+            label = os.path.join(data_dir, dataset, "labels/loose/256")
+        elif dataset == "hand":
+            rgb = os.path.join(data_dir, dataset, "rgb/256")
+            label = os.path.join(data_dir, dataset, "label/256")
         odir = os.path.join(data_dir, "mrcnn/loose/256")
         format_mrcnn_data(rgb, label, odir)

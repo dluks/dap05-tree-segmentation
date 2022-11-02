@@ -48,7 +48,7 @@ from imgaug import augmenters as iaa
 from keras import backend as K
 
 # Root directory of the project
-MRCNN_DIR = os.path.abspath("../Mask_RCNN/")
+MRCNN_DIR = os.path.abspath("../mrcnn_tf2/")
 ROOT_DIR = os.path.abspath("./")
 
 # Import Mask RCNN
@@ -71,6 +71,8 @@ RESULTS_DIR = os.path.join(ROOT_DIR, "results/tree/")
 
 DEFAULT_SEED = 42
 DEFAULT_SPLIT = 0.1
+
+IMG_SIZE = 256
 
 ############################################################
 #  Configurations
@@ -142,8 +144,8 @@ class TreeConfig(Config):
     #         size IMAGE_MIN_DIM x IMAGE_MIN_DIM. Can be used in training only.
     #         IMAGE_MAX_DIM is not used in this mode.
     IMAGE_RESIZE_MODE = "none"
-    IMAGE_MIN_DIM = 128
-    IMAGE_MAX_DIM = 128
+    IMAGE_MIN_DIM = IMG_SIZE
+    IMAGE_MAX_DIM = IMG_SIZE
 
     # Image mean (RGB)
     MEAN_PIXEL = np.array([107.0, 105.2, 101.5])
@@ -164,7 +166,7 @@ class TreeConfig(Config):
 
     # If enabled, resizes instance masks to a smaller size to reduce
     # memory load. Recommended when using high-resolution images.
-    USE_MINI_MASK = True
+    USE_MINI_MASK = False
     MINI_MASK_SHAPE = (56, 56)  # (height, width) of the mini-mask
 
     # Weight decay regularization
@@ -187,13 +189,15 @@ class TreeInferenceConfig(TreeConfig):
     IMAGES_PER_GPU = 1
     # Don't resize imager for inferencing
     IMAGE_RESIZE_MODE = "none"
+    IMAGE_MIN_DIM = IMG_SIZE
+    IMAGE_MAX_DIM = IMG_SIZE
     # Non-max suppression threshold to filter RPN proposals.
     # You can increase this during training to generate more propsals.
     RPN_NMS_THRESHOLD = 0.7
 
     USE_MINI_MASK = False
 
-    # RPN_ANCHOR_SCALES = (8, 16, 32, 64)
+    RPN_ANCHOR_SCALES = (8, 16, 32, 64)
     LEARNING_RATE = 0.001
 
 
@@ -226,7 +230,7 @@ class TreeDataset(utils.Dataset):
         elif subset == "watershed":
             image_ids = [d for d in os.listdir(data_dir) if d.startswith("RGBI")]
         else:
-            image_ids = os.listdir(data_dir)
+            image_ids = [d for d in os.listdir(data_dir) if not d.startswith(".")]
 
         if not seed:
             rng = np.random.default_rng()
@@ -301,6 +305,7 @@ def train(
     seed=DEFAULT_SEED,
     augmentation=None,
     gs=False,
+    label="",
 ):
     def dataset():
         """Train the model."""
@@ -319,11 +324,9 @@ def train(
     def train_config(dataset_train, dataset_val):
         # Adapt steps per epoch to dataset size
         class TrainConfig(TreeConfig):
-            STEPS_PER_EPOCH = (
-                len(dataset_train.image_ids) // TreeConfig.IMAGES_PER_GPU * 2
-            )
+            STEPS_PER_EPOCH = len(dataset_train.image_ids) // TreeConfig.IMAGES_PER_GPU
             VALIDATION_STEPS = max(
-                2, len(dataset_val.image_ids) // TreeConfig.IMAGES_PER_GPU * 2
+                2, len(dataset_val.image_ids) // TreeConfig.IMAGES_PER_GPU
             )
 
         return TrainConfig
@@ -339,17 +342,17 @@ def train(
             mode="auto",
             min_delta=0.0001,
             cooldown=1,
-            min_lr=0.00001,
+            min_lr=0.000001,
         )
         return r
 
     # Custom Callbacks
     from keras.callbacks import ModelCheckpoint, CSVLogger
 
-    def callback(cust_st):
+    def callback(label):
         cb = []
         checkpoint = ModelCheckpoint(
-            DEFAULT_LOGS_DIR + "/tree" + cust_st + "_wg.h5",
+            os.path.join(DEFAULT_LOGS_DIR, label, f"{label}_wg.h5"),
             save_best_only=True,
             mode="min",
             monitor="val_loss",
@@ -359,7 +362,7 @@ def train(
         cb.append(checkpoint)
         lr_decay = reduceLROnPlat()
         cb.append(lr_decay)
-        log = CSVLogger(DEFAULT_LOGS_DIR + "/tree" + cust_st + "_history.csv")
+        log = CSVLogger(os.path.join(DEFAULT_LOGS_DIR, label, f"{label}_history.csv"))
         cb.append(log)
         return cb
 
@@ -521,10 +524,10 @@ def train(
             dataset_train,
             dataset_val,
             learning_rate=config.LEARNING_RATE,
-            epochs=300,
+            epochs=50,
             augmentation=augmentation,
             layers="heads",
-            custom_callbacks=callback("strict_only-heads"),
+            custom_callbacks=callback(label),
         )
 
 
@@ -719,6 +722,14 @@ test split.",
         help="Iterates over a number of hyperparameters with a short epoch period for\
 optimization purposes.",
     )
+
+    parser.add_argument(
+        "--label",
+        required=False,
+        type=str,
+        metavar="Training session label",
+        help="The label used for weights files.",
+    )
     args = parser.parse_args()
 
     # Validate arguments
@@ -789,6 +800,7 @@ optimization purposes.",
             seed=args.seed,
             augmentation=args.aug,
             gs=args.gs,
+            label=args.label,
         )
     elif args.command == "detect":
         detect(model, args.dataset, args.subset, args.split, args.seed, val=True)

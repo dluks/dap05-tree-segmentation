@@ -151,10 +151,10 @@ class TreeConfig(Config):
     MEAN_PIXEL = np.array([107.0, 105.2, 101.5])
 
     # Max number of final detections
-    DETECTION_MAX_INSTANCES = 100
+    DETECTION_MAX_INSTANCES = 26
 
     # Maximum number of ground truth instances to use in one image
-    MAX_GT_INSTANCES = 101
+    MAX_GT_INSTANCES = 26
 
     # ROIs kept after non-maximum supression (training and inference)
     POST_NMS_ROIS_TRAINING = 1000
@@ -272,7 +272,10 @@ class TreeDataset(utils.Dataset):
         classes = np.unique(mask)
         masks = []
         for cl in classes:
-            if cl > 0:
+            if cl == 0:
+                m = np.zeros((mask.shape[0], mask.shape[1]))
+                masks.append(m)
+            elif cl > 0:
                 m = np.zeros((mask.shape[0], mask.shape[1]))
                 m[np.where(mask == cl)] = 1
                 masks.append(m)

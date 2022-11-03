@@ -187,18 +187,9 @@ class TreeInferenceConfig(TreeConfig):
     # Set batch size to 1 to run one image at a time
     GPU_COUNT = 1
     IMAGES_PER_GPU = 1
-    # Don't resize imager for inferencing
-    IMAGE_RESIZE_MODE = "none"
-    IMAGE_MIN_DIM = IMG_SIZE
-    IMAGE_MAX_DIM = IMG_SIZE
     # Non-max suppression threshold to filter RPN proposals.
     # You can increase this during training to generate more propsals.
     RPN_NMS_THRESHOLD = 0.7
-
-    USE_MINI_MASK = False
-
-    RPN_ANCHOR_SCALES = (8, 16, 32, 64)
-    LEARNING_RATE = 0.001
 
 
 ############################################################
@@ -604,8 +595,81 @@ def mask_to_rle(image_id, mask, scores):
 
 
 def detect(
-    model, dataset_dir, subset="all", split=DEFAULT_SPLIT, seed=DEFAULT_SEED, val=False
+    weights,
+    dataset_dir,
+    subset="all",
+    split=DEFAULT_SPLIT,
+    seed=DEFAULT_SEED,
+    val=False,
 ):
+    def dataset():
+        """Train the model."""
+        # Training dataset.
+        dataset_train = TreeDataset()
+        dataset_train.load_tree(dataset_dir, subset=subset, split=split, seed=seed)
+        dataset_train.prepare()
+        # Validation dataset
+        dataset_val = TreeDataset()
+        dataset_val.load_tree(
+            dataset_dir, subset=subset, split=split, val=True, seed=seed
+        )
+        dataset_val.prepare()
+        return dataset_train, dataset_val
+
+    def detect_config(dataset_train, dataset_val):
+        # Adapt steps per epoch to dataset size
+        class DetectConfig(TreeInferenceConfig):
+            STEPS_PER_EPOCH = (
+                len(dataset_train.image_ids) // TreeInferenceConfig.IMAGES_PER_GPU
+            )
+            VALIDATION_STEPS = max(
+                2, len(dataset_val.image_ids) // TreeInferenceConfig.IMAGES_PER_GPU
+            )
+
+        return DetectConfig
+
+    # Read dataset
+    dataset_train, dataset_val = dataset()
+    config = detect_config(dataset_train, dataset_val)()
+
+    # Create model
+    model = modellib.MaskRCNN(
+        mode="inference", config=config, model_dir=DEFAULT_LOGS_DIR
+    )
+
+    # Select weights file to load
+    if weights == "coco":
+        weights_path = COCO_WEIGHTS_PATH
+        # Download weights file
+        if not os.path.exists(weights_path):
+            utils.download_trained_weights(weights_path)
+    elif weights == "last":
+        # Find last trained weights
+        weights_path = model.find_last()
+    elif weights == "imagenet":
+        # Start from ImageNet trained weights
+        weights_path = model.get_imagenet_weights()
+    else:
+        weights_path = weights
+
+    # Load weights
+    print("Loading weights ", weights_path)
+    if weights == "coco":
+        # Exclude the last layers because they require a matching
+        # number of classes
+        model.load_weights(
+            weights_path,
+            by_name=True,
+            exclude=[
+                "mrcnn_class_logits",
+                "mrcnn_bbox_fc",
+                "mrcnn_bbox",
+                "mrcnn_mask",
+            ],
+        )
+    else:
+        model.load_weights(weights_path, by_name=True)
+
     """Run detection on images in the given directory."""
     print("Running on {}".format(dataset_dir))
 
@@ -616,19 +680,15 @@ def detect(
     submit_dir = os.path.join(RESULTS_DIR, submit_dir)
     os.makedirs(submit_dir)
 
-    # Read dataset
-    dataset = TreeDataset()
-    dataset.load_tree(dataset_dir, subset=subset, split=split, seed=seed, val=val)
-    dataset.prepare()
     # Load over images
     submission = []
-    for image_id in dataset.image_ids:
+    for image_id in dataset_val.image_ids:
         # Load image and run detection
-        image = dataset.load_image(image_id)
+        image = dataset_val.load_image(image_id)
         # Detect objects
         r = model.detect([image], verbose=0)[0]
         # Encode image to RLE. Returns a string of multiple lines
-        source_id = dataset.image_info[image_id]["id"]
+        source_id = dataset_val.image_info[image_id]["id"]
         rle = mask_to_rle(source_id, r["masks"], r["scores"])
         submission.append(rle)
         # Save image with masks
@@ -637,13 +697,15 @@ def detect(
             r["rois"],
             r["masks"],
             r["class_ids"],
-            dataset.class_names,
+            dataset_val.class_names,
             r["scores"],
             show_bbox=False,
             show_mask=False,
             title="Predictions",
         )
-        plt.savefig("{}/{}.png".format(submit_dir, dataset.image_info[image_id]["id"]))
+        plt.savefig(
+            "{}/{}.png".format(submit_dir, dataset_val.image_info[image_id]["id"])
+        )
 
     # Save to csv file
     submission = "ImageId,EncodedPixels\n" + "\n".join(submission)
@@ -809,6 +871,13 @@ optimization purposes.",
             label=args.label,
         )
     elif args.command == "detect":
-        detect(model, args.dataset, args.subset, args.split, args.seed, val=True)
+        detect(
+            weights=args.weights.lower(),
+            dataset_dir=args.dataset,
+            subset=args.subset,
+            split=args.split,
+            seed=args.seed,
+            val=True,
+        )
     else:
         print("'{}' is not recognized. " "Use 'train' or 'detect'".format(args.command))

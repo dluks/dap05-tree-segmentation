@@ -353,9 +353,12 @@ def train(
     from keras.callbacks import ModelCheckpoint, CSVLogger
 
     def callback(label):
+        sess_dir = os.path.join(DEFAULT_LOGS_DIR, label)
+        if not os.path.exists(sess_dir):
+            os.makedirs(sess_dir)
         cb = []
         checkpoint = ModelCheckpoint(
-            os.path.join(DEFAULT_LOGS_DIR, label, f"{label}_wg.h5"),
+            os.path.join(sess_dir, f"{label}_wg.h5"),
             save_best_only=True,
             mode="min",
             monitor="val_loss",
@@ -365,7 +368,7 @@ def train(
         cb.append(checkpoint)
         lr_decay = reduceLROnPlat()
         cb.append(lr_decay)
-        log = CSVLogger(os.path.join(DEFAULT_LOGS_DIR, label, f"{label}_history.csv"))
+        log = CSVLogger(os.path.join(sess_dir, f"{label}_history.csv"))
         cb.append(log)
         return cb
 
